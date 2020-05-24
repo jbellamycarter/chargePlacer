@@ -235,6 +235,61 @@ def print_energy(charge_product):
     print("{:G} kJ/mol".format(charge_product*0.001*AVOGADRO))
     return
     
+def parse_coordinates(pdb_file, point_charges=point_charge_dict,
+                      deprot_charges=deprot_charge_dict, 
+                      proton_affinities=proton_affinity_dict):
+    """Parses coordinates for chargeable residues from `pdb_file`.
+    
+    Parameters
+    ----------
+    
+    Returns
+    -------
+    deprot_charges : ndarray
+    xyz : ndarray
+    affinities : ndarray
+    """
+    structure = PDB(pdb_file)
+    
+    # Initialise lists
+    resn = []
+    resi = []
+    deprot_charges = []
+    affinities = []
+    xyz = []
+    
+    # Preselect model and chain in case of multiple of either
+    # TODO: Add multi-chain and multi-model behaviour 
+    model = 1
+    chain = 'A'
+    
+    residues = sorted(structure.structure[model][chain])
+
+    # Add N-terminus to lists
+    resn.append('NT')
+    resi.append(residues[0])
+    deprot_charges.append(deprot_charge_dict['NT'])
+    affinities.append(proton_affinity_dict['NT'])
+    xyz.append(structure.get_coords(model, chain, residues[0], point_charge_dict['NT']))
+
+    for residue in residues:
+        resname = structure.structure[model][chain][residue][0]['resname']
+        if resname in ['ASP', 'GLU', 'LYS', 'ARG', 'HIS']:
+            resn.append(resname)
+            resi.append(residue)
+            deprot_charges.append(deprot_charge_dict[resname])
+            affinities.append(proton_affinity_dict[resname])
+            xyz.append(structure.get_coords(model, chain, residue, point_charge_dict[resname]))
+
+    # Add C-terminus to lists
+    resn.append('CT')
+    resi.append(residues[-1])
+    deprot_charges.append(deprot_charge_dict['CT'])
+    affinities.append(proton_affinity_dict['CT'])
+    xyz.append(structure.get_coords(model, chain, residues[-1], point_charge_dict['CT']))
+
+    return np.array(deprot_charges), np.array(xyz), np.array(affinities)
+
 def matrix_impl(charge_seq, dist_m, mask):
     charge_mat = sym_mat(charge_seq)
     return E_CONST*np.sum(charge_mat[mask]/dist_m)
@@ -318,53 +373,12 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
         current_min = shunt_min
     
     return current_seq, current_min*0.001*AVOGADRO, e_coulomb, e_proton, best_seqs
-    
+
 # Importing Files
 # TODO: Add command line functionality
 pdb_file = '/home/jedd/Documents/PostDoc/MD/protein_init.pdb'
-structure = PDB(pdb_file)
 
-# Generating coordinates
-
-resn = []
-resi = []
-deprot_charges = []
-affinities = []
-xyz = []
-
-# Parse points from PDB
-model = 1
-chain = 'A'
-
-residues = sorted(structure.structure[model][chain])
-
-# Add N-terminus to lists
-resn.append('NT')
-resi.append(residues[0])
-deprot_charges.append(deprot_charge_dict['NT'])
-affinities.append(proton_affinity_dict['NT'])
-xyz.append(structure.get_coords(model, chain, residues[0], point_charge_dict['NT']))
-
-for residue in residues:
-    resname = structure.structure[model][chain][residue][0]['resname']
-    if resname in ['ASP', 'GLU', 'LYS', 'ARG', 'HIS']:
-        resn.append(resname)
-        resi.append(residue)
-        deprot_charges.append(deprot_charge_dict[resname])
-        affinities.append(proton_affinity_dict[resname])
-        xyz.append(structure.get_coords(model, chain, residue, point_charge_dict[resname]))
-
-# Add C-terminus to lists
-resn.append('CT')
-resi.append(residues[-1])
-deprot_charges.append(deprot_charge_dict['CT'])
-affinities.append(proton_affinity_dict['CT'])
-xyz.append(structure.get_coords(model, chain, residues[-1], point_charge_dict['CT']))
-
-# NumPy-ise everything
-deprot_charges = np.array(deprot_charges)
-xyz = np.array(xyz)
-affinities = np.array(affinities)
+deprot_charges, xyz, affinities = parse_coordinates(pdb_file)
 
 # Generate for 8+
 target_charge = 8
