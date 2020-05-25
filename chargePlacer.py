@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
 #-*- coding:utf-8 -*-
-
+# Copyright 2020 Jedd Bellamy-Carter
+# MIT License
 """
 A python implementation of a charge positioning algorithm for gas-phase
 molecular dynamics.
 """
 
-# Copyright 2020 Jedd Bellamy-Carter
-# MIT License
 from __future__ import division, print_function, absolute_import
 
+# Standard Python Modules
 import argparse
 import os
 import sys
 import time
+
+# Additional Modules
 import numpy as np
 
-# GLOBAL VARIABLES
+#%% GLOBAL VARIABLES
 
-_E_CONST = 2.307E-18  # J.Å
+_E_CONST = 2.307E-18  # J.Å -- (elementary charge)^2 / (4 x PI x vacuum permittivity)
 relative_permittivity = 1
 E_CONST = _E_CONST / relative_permittivity  #Relative permittivity of water
 AVOGADRO = 6.022E+23
 
-# LOOKUP DICTIONARIES
+#%% LOOKUP DICTIONARIES 
 
 # Atoms to get coordinates for point-charge assignment
 point_charge_dict = {'ASP': 'OD2',
@@ -50,7 +52,7 @@ proton_affinity_dict = {'ASP': 2.414e-18,
                         'NT': 1.472e-18, 
                         'CT': 2.375e-18}
 
-# CLASSES
+#%% CLASSES
 
 class PDB():
     """
@@ -171,7 +173,15 @@ class PDB():
         print('No atom with name {} found for this residue'.format(atom_name))
         
 
-# FUNCTIONS
+#%% FUNCTIONS
+
+def joules_to_kj_per_mol(value):
+    """Converts values in J units to kJ/mol"""
+    return value*0.001*AVOGADRO
+    
+def kj_per_mol_to_joules(value):
+    """Converts values in kJ/mol units to J"""
+    return value*1000/AVOGADRO
 
 def distance_matrix(a, b):
     """
@@ -194,7 +204,7 @@ def distance_matrix(a, b):
     _b = np.asarray(b)[np.newaxis,:,:]
     return np.sum((_a - _b)**2, axis = -1)**0.5
 
-def sym_mat(vector):
+def symmetric_matrix(vector):
     """
     Create NxN symmetric matrix from 1xN vector
     
@@ -290,8 +300,8 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
 
     return np.array(deprot_charges), np.array(xyz), np.array(affinities)
 
-def matrix_impl(charge_seq, dist_m, mask):
-    charge_mat = sym_mat(charge_seq)
+def coulomb_energy(charge_seq, dist_m, mask):
+    charge_mat = symmetric_matrix(charge_seq)
     return E_CONST*np.sum(charge_mat[mask]/dist_m)
     
 def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, correct_affinity=True, verbose=True, shuffle=False):
@@ -299,7 +309,7 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
        combination that provides the miminal energy.
     
     Parameters
-    ------
+    ----------
     proton_sequence : initial proton sequence (1xN array)
     deprot_charges : charge of residue when deprotonated (1xN array) 
     affinities : proton affinities of each residue (1xN array)
@@ -320,11 +330,11 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
         current_seq = np.random.permutation(proton_sequence)
     else:
         current_seq = proton_sequence.copy()
-    current_min = matrix_impl(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
+    current_min = coulomb_energy(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
     best_seqs = [[0],[current_min*0.001*AVOGADRO],[current_seq.copy()]] #initialise with starting sequence
     if verbose:
         print("Starting sequence\n------------------------------\n{}".format(current_seq))
-        print("Coulomb energy = {:.0f} kJ/mol".format(matrix_impl(current_seq+deprot_charges, dist_m, mask)*0.001*AVOGADRO))
+        print("Coulomb energy = {:.0f} kJ/mol".format(coulomb_energy(current_seq+deprot_charges, dist_m, mask)*0.001*AVOGADRO))
         print("Binding energy = {:.0f} kJ/mol".format(affinities[current_seq.nonzero()[0]].sum()*0.001*AVOGADRO))
         print("Total energy = {:.0f} kJ/mol".format(current_min*0.001*AVOGADRO))
     shunt_min = current_min
@@ -332,7 +342,7 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
 
     while (shunt_min <= current_min):
         counters[1] += 1
-        shunt_min = matrix_impl(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
+        shunt_min = coulomb_energy(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
         best_shunt = [0, 0]
         deprot_sequence = np.where(current_seq == 0)[0]
         for p in current_seq.nonzero()[0]:
@@ -341,7 +351,7 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
             for d in deprot_sequence:
                 counters[2] += 1
                 current_seq[d] = 1
-                e_coulomb = matrix_impl(current_seq+deprot_charges, dist_m, mask)
+                e_coulomb = coulomb_energy(current_seq+deprot_charges, dist_m, mask)
                 e_proton = affinities[current_seq.nonzero()[0]].sum()
                 e_tot = e_coulomb - e_proton
                 if e_tot <= shunt_min:
@@ -356,7 +366,7 @@ def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, c
 
         # Update `current_seq` to best values
         if (shunt_min >= current_min):
-            e_coulomb = matrix_impl(current_seq+deprot_charges, dist_m, mask)*0.001*AVOGADRO
+            e_coulomb = coulomb_energy(current_seq+deprot_charges, dist_m, mask)*0.001*AVOGADRO
             e_proton = affinities[current_seq.nonzero()[0]].sum()*0.001*AVOGADRO
             if verbose:
                 counters[0] = time.process_time() - counters[0]
