@@ -11,8 +11,12 @@ permutations across chargeable side-chains and termini represented as
 point charges. This algorithm produces a reproducible output proton
 sequence in far fewer steps than required for sampling all permutations.
 
-The optimised proton sequence is saved to file (OUTPUT) with the format:
+The optimised proton sequence is saved to file (*proton_sites.txt) with 
+the format:
 <Residue Name> <Residue Number> <Chain Identifier>
+
+The charges matching to this proton sequences are saved to file 
+(*charges.txt).
 
 A choice of energies are calculated and used for determination. By
 default, `E_tot` is used. This is the Coulomb energy minus the proton
@@ -22,7 +26,8 @@ Coulomb energy is taken into account.
 
 This software also provides the option to perform in silico alanine
 scanning, where each chargeable side-chain is removed and the minimised
-proton sequence determined for each 'mutant'.
+proton sequence determined for each 'mutant'. The charges for each 
+mutant proton sequence are appended to `*charges.txt`.
 """
 
 from __future__ import division, print_function, absolute_import
@@ -40,8 +45,8 @@ import numpy as np
 
 _E_CONST = 2.307E-18  # J.Å -- (elementary charge)^2 / (4 x PI x vacuum permittivity)
 relative_permittivity = 1 # Relative permittivity of vacuum
-E_CONST = _E_CONST / relative_permittivity
 AVOGADRO = 6.022E+23
+E_CONST = _E_CONST * 0.001 * AVOGADRO / relative_permittivity # kJ.Å/mol
 
 #%% LOOKUP DICTIONARIES 
 
@@ -53,7 +58,8 @@ point_charge_dict = {
     'ARG': 'NH2', 
     'HIS': 'CB', 
     'NT': 'N', 
-    'CT': 'C'}
+    'CT': 'C'
+}
 # Charge of the deprotonated residue
 deprot_charge_dict = {
     'ASP': -1, 
@@ -62,16 +68,18 @@ deprot_charge_dict = {
     'ARG': 0, 
     'HIS': 0, 
     'NT': 0, 
-    'CT': -1}
-# Proton affinities in Joules
+    'CT': -1
+}
+# Proton affinities in kJ/mol
 proton_affinity_dict = {
-    'ASP': 2.414e-18,
-    'GLU': 2.405e-18,
-    'LYS': 1.524e-18, 
-    'ARG': 1.664e-18, 
-    'HIS': 1.591e-18, 
-    'NT': 1.472e-18, 
-    'CT': 2.375e-18}
+    'ASP': 1453.5, 
+    'GLU': 1448.5, 
+    'LYS': 918., 
+    'ARG': 1002.,
+    'HIS': 958., 
+    'NT': 886.6, 
+    'CT': 1430.
+}
 
 #%% CLASSES
 
@@ -259,12 +267,6 @@ def moveable_protons(deprotonated_charges, target_charge):
     proton_vector[:num_protons] = 1
     np.random.shuffle(proton_vector)
     return proton_vector
-
-
-def print_energy(charge_product):
-    """Prints formatted energy returned from calcualtion, in kJ/mol"""
-    print("{:G} kJ/mol".format(charge_product*0.001*AVOGADRO))
-    return
     
 def parse_coordinates(pdb_file, point_charges=point_charge_dict,
                       deprot_charges=deprot_charge_dict, 
@@ -323,94 +325,148 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
 
     return resn, resi, np.array(deprot_charges), np.array(xyz), np.array(affinities)
 
-def coulomb_energy(charge_seq, dist_m, mask):
-    charge_mat = symmetric_matrix(charge_seq)
-    return E_CONST*np.sum(charge_mat[mask]/dist_m)
+def coulomb_energy(charge_seq, distances, mask):
+    """Calculate Coulomb energy for charges by distance
     
-def minimise_energy(proton_sequence, deprot_charges, affinities, dist_m, mask, 
-                    coulomb_only=False, verbose=True, shuffle=False):
+    Parameters
+    ----------
+    charge_seq : ndarray
+    distances : ndarray
+    mask : ndarray
+    
+    Returns
+    -------
+    coulomb energy : float
+       Coulomb energy (electrostatic energy) in Joules 
+    """
+    charge_mat = symmetric_matrix(charge_seq)
+    return E_CONST * np.sum(charge_mat[mask] / distances)
+    
+def binding_energy(proton_seq, affinities):
+    """Calculate binding energy from proton affinities
+    
+    Parameters
+    ----------
+    proton_seq : ndarray
+        protonation state of residues
+    affinities : ndarray
+        proton affinities for residues
+    
+    Returns
+    -------
+    binding energy : float
+        Binding energy in Joules
+    """
+    return affinities[proton_seq.nonzero()[0]].sum()
+
+def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
     """Minimising function. Iterates through a proton sequence to find the
        combination that provides the miminal energy.
     
     Parameters
     ----------
-    proton_sequence : initial proton sequence (1xN array)
     deprot_charges : charge of residue when deprotonated (1xN array) 
     affinities : proton affinities of each residue (1xN array)
-    verbose : whether to print results (boolean)
+    xyz : coordinates for point charges (Nx3)
+    charge : target charge state (int)
     coulomb_only : whether to only calculate Coulomb energy (boolean)
-    shuffle : if True, the input `proton_sequence` will be shuffled before starting
+    verbose : whether to print results (boolean)
     
     Returns
     -------
-    current_seq : current best proton sequence after minimisation
-    current_min : total energy of `current_seq` after minimisation
-    e_coulomb : Coulomb energy of `current_seq` after minimisation
-    e_proton : binding energy of `current_seq` after minimisation
+    proton_seq : current best proton sequence after minimisation
+    e_total : total energy of `proton_seq` after minimisation 
+                (Only if `coulomb_only`=False)
+    e_coulomb : Coulomb energy of `proton_seq` after minimisation
+    e_proton : binding energy of `proton_seq` after minimisation
     """
     
+    # Initialise local variables
+    proton_seq = moveable_protons(deprot_charges, charge)
+    mask = np.mask_indices(len(proton_seq), np.triu, 1)
+    distances = distance_matrix(xyz, xyz)[mask]
+    
     if coulomb_only:
-        affinities = np.zeros_like(proton_sequence)
-    if shuffle:
-        current_seq = np.random.permutation(proton_sequence)
+        get_energy = lambda: coulomb_energy(proton_seq+deprot_charges, distances, mask)
     else:
-        current_seq = proton_sequence.copy()
-    current_min = coulomb_energy(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
-    best_seqs = [[0],[joules_to_kj_per_mol(current_min)],[current_seq.copy()]] #initialise with starting sequence
-    if verbose:
-        print("Starting sequence\n------------------------------\n{}".format(current_seq))
-        print("Coulomb energy = {:.0f} kJ/mol".format(joules_to_kj_per_mol(coulomb_energy(current_seq+deprot_charges, dist_m, mask))))
-        print("Binding energy = {:.0f} kJ/mol".format(joules_to_kj_per_mol(affinities[current_seq.nonzero()[0]].sum())))
-        print("Total energy = {:.0f} kJ/mol".format(joules_to_kj_per_mol(current_min)))
+        get_energy = lambda: (coulomb_energy(proton_seq+deprot_charges, distances, mask)
+                              - binding_energy(proton_seq, affinities))
+    
+    # Initial energies
+    current_min = get_energy()
     shunt_min = current_min
     counters = [time.process_time(), 0, 0]
 
     while (shunt_min <= current_min):
         counters[1] += 1
-        shunt_min = coulomb_energy(current_seq+deprot_charges, dist_m, mask) - affinities[current_seq.nonzero()[0]].sum()
+        if verbose:
+            print('Shunt={}'.format(counters[1]))
+        shunt_min = get_energy()
         best_shunt = [0, 0]
-        deprot_sequence = np.where(current_seq == 0)[0]
-        for p in current_seq.nonzero()[0]:
-            current_seq[p] = 0
+        deprot_sequence = np.where(proton_seq == 0)[0]
+        
+        for p in proton_seq.nonzero()[0]:
+            proton_seq[p] = 0
             # For all protonatable sites
             for d in deprot_sequence:
                 counters[2] += 1
-                current_seq[d] = 1
-                e_coulomb = coulomb_energy(current_seq+deprot_charges, dist_m, mask)
-                e_proton = affinities[current_seq.nonzero()[0]].sum()
-                e_tot = e_coulomb - e_proton
+                proton_seq[d] = 1
+                e_tot = get_energy()
+                if verbose:
+                    print('Step {}, {:10.2f} kJ/mol'.format(counters[2], e_tot))
                 if e_tot <= shunt_min:
-                    #print(current_seq)
-                    best_seqs[0].append(counters[2])
-                    best_seqs[1].append(joules_to_kj_per_mol(e_tot))
-                    best_seqs[2].append(current_seq.copy())
                     shunt_min = e_tot
                     best_shunt = [p, d]
-                current_seq[d] = 0
-            current_seq[p] = 1
-
-        # Update `current_seq` to best values
+                proton_seq[d] = 0
+            proton_seq[p] = 1
+        if verbose:
+            print('Shunt {} minimum energy {:.2f} kJ/mol'.format(counters[1], shunt_min))
+        # Update `proton_seq` to best values
         if (shunt_min >= current_min):
-            e_coulomb = joules_to_kj_per_mol(coulomb_energy(current_seq+deprot_charges, dist_m, mask))
-            e_proton = joules_to_kj_per_mol(affinities[current_seq.nonzero()[0]].sum())
-            if verbose:
-                counters[0] = time.process_time() - counters[0]
-                print("\nBest Sequence\n------------------------------\n{}".format(current_seq))
-                print("Coulomb energy = {:.0f} kJ/mol".format(e_coulomb))
-                print("Binding energy = {:.0f} kJ/mol".format(e_proton))
-                print("Total energy = {:.0f} kJ/mol".format(joules_to_kj_per_mol(current_min)))
-                print("\nOptimisation completed in {:.2f} seconds after {} shunts in a total of {} steps.".format(*counters))
+            e_coulomb = coulomb_energy(proton_seq+deprot_charges, distances, mask)
+            e_proton = binding_energy(proton_seq, affinities)
+            counters[0] = time.process_time() - counters[0]
+            print("Best Sequence\n-------------\n{}".format(proton_seq))
+            print("Coulomb energy = {:.2f} kJ/mol".format(e_coulomb))
+            if not coulomb_only:
+                print("Binding energy = {:.2f} kJ/mol".format(e_proton))
+                print("Total energy = {:.2f} kJ/mol".format(current_min))
+            print("Optimisation completed in {:.2f} seconds after {} shunts in a total of {} steps.".format(*counters))
             break
-        current_seq[best_shunt[0]] = 0
-        current_seq[best_shunt[1]] = 1
+        # Reset `proton_seq` to best sequence to reseed
+        proton_seq[best_shunt[0]] = 0
+        proton_seq[best_shunt[1]] = 1
         current_min = shunt_min
     
-    return current_seq, joules_to_kj_per_mol(current_min), e_coulomb, e_proton, best_seqs
+    return proton_seq, current_min, e_coulomb, e_proton
     
-def alanine_scan(proton_sequence, *args, **kwargs):
-    pass
+def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
+    """In silico alanine scanning of chargeable side-chains
+    
+    Parameters
+    ----------
+
+    
+    Returns
+    -------
+
+    """
     # TODO: fill this function and refactor
-def save_proton_sequence(filename, proton_sequence, resn, resi, pdb_file=None):
+    ignore_mask = np.ones_like(deprot_charges, dtype=bool)
+    for r, res in enumerate(resn):
+        if res in ['NT', 'CT']:
+            continue
+        print('\n{} {} -> ALA...'.format(res, resi[r]))
+        ignore_mask[r] = False
+        mutant_min_energy = minimise_energy(deprot_charges[ignore_mask], 
+                                            affinities[ignore_mask], 
+                                            xyz[ignore_mask], 
+                                            charge, 
+                                            coulomb_only, 
+                                            verbose)
+        ignore_mask[r] = True
+    
+def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, resi, pdb_file=None):
     """Save minimised proton sequence to file in the form:
     
     Parameters
@@ -429,14 +485,15 @@ def save_proton_sequence(filename, proton_sequence, resn, resi, pdb_file=None):
         Text file containing all protonated residues and termini by row.
         <RESN>\t<RESI>\t<CHAIN>
     """
-    with open(filename, 'w') as outfile:
+    with open(filename+'proton_sites.txt', 'w') as outfile:
         outfile.write('# This file was generated by chargePlacer.py, {}\n'.format(time.strftime("%d %b %Y %H:%M:%S")))
         if pdb_file:
             outfile.write('# From {}\n'.format(pdb_file))
+        outfile.write('# Coulomb Energy = {:.2f} kJ/mol, Proton Binding Energy = {:.2f} kJ/mol\n'.format(e_coulomb, e_proton))
         for r, res in enumerate(resi):
             if proton_sequence[r]:
                 outfile.write('{}\t{}\t{}\n'.format(resn[r], res, 'A'))
-    print('Proton sequence successfully saved to {}'.format(filename))
+    print('Proton sequence successfully saved to {}'.format(filename+'proton_sites.txt'))
 
 
 
@@ -446,8 +503,8 @@ if __name__ == '__main__':
                                         formatter_class=argparse.RawDescriptionHelpFormatter)
     argparser.add_argument('input', metavar='INPUT', help='input PDB file to determine charges for')
     argparser.add_argument('charge', metavar='CHARGE', help='target charge state', type=int)
-    argparser.add_argument('-q', '--quiet', 
-                           help='suppress verbose output', action='store_true')
+    argparser.add_argument('-v', '--verbose', 
+                           help='verbose output', action='store_true')
     argparser.add_argument('-c', '--coulomb_only', 
                            help='minimise for Coulomb repulsion only, ignores proton affinity', 
                            action='store_true')
@@ -458,33 +515,39 @@ if __name__ == '__main__':
                            help='perform in silico alanine scanning for all chargeable residues', 
                            action='store_true')
     argparser.add_argument('-o', '--output', 
-                           help='output file for proton sites (default: proton_sites.txt)', 
-                           default='proton_sites.txt')
+                           help='prefix for output files (default: ""). Gives *proton_sites.txt and *charges.txt', 
+                           default='')
     args = argparser.parse_args()
-    # TODO: Add handling of these arguments
+
     if args.relative_permittivity != 1:
         E_CONST = _E_CONST / args.relative_permittivity
     
     print('Opening {} and parsing coordinates...'.format(args.input))
     resn, resi , deprot_charges, xyz, affinities = parse_coordinates(args.input)
-
-    # Generate for 8+
-    target_charge = args.charge
-    proton_seq = moveable_protons(deprot_charges, target_charge)
-    # Mask for arrays (speeds up calculation)
-    mask = np.mask_indices(len(proton_seq), np.triu, 1)
-    distance_mat = distance_matrix(xyz, xyz)  # Create distance matrix. r_ij
-    dist_m = distance_mat[mask]
-    
+  
     print('Minimising energy of proton sequence...')
-    min_energy = minimise_energy(proton_seq, 
-                             deprot_charges, 
-                             affinities, 
-                             dist_m, 
-                             mask, 
-                             verbose = not args.quiet,
-                             coulomb_only = args.coulomb_only,
-                             shuffle=True)
-    print('Successfully minimised energy!')
-    save_proton_sequence(args.output, min_energy[0], resn, resi, args.input)
-
+    min_energy = minimise_energy(deprot_charges, 
+                                 affinities, 
+                                 xyz, 
+                                 args.charge,
+                                 coulomb_only = args.coulomb_only, 
+                                 verbose = args.verbose)
+    
+    if args.alanine_scan:
+        print('Beginning in silico alanine scanning...')
+        alanine_scan(resn,
+                     resi,
+                     deprot_charges, 
+                     affinities, 
+                     xyz, 
+                     args.charge,
+                     coulomb_only = args.coulomb_only, 
+                     verbose = args.verbose)
+    
+    save_proton_sequence(args.output, 
+                         min_energy[0], 
+                         min_energy[2], 
+                         min_energy[3], 
+                         resn, 
+                         resi, 
+                         args.input)
