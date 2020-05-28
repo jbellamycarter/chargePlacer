@@ -441,31 +441,53 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
     return proton_seq, current_min, e_coulomb, e_proton
     
 def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
-    """In silico alanine scanning of chargeable side-chains
+    """In silico alanine scanning of chargeable side-chains.
+    
+    Takes usual inputs for `minimise_energy` to pass on a masked version. Only
+    applied to side-chains, as termini are immutable. 
     
     Parameters
     ----------
-
+    resn : residue names (list)
+    resi : residue numbers/identities (list)
+    deprot_charges : charge of residue when deprotonated (1xN array) 
+    affinities : proton affinities of each residue (1xN array)
+    xyz : coordinates for point charges (Nx3)
+    charge : target charge state (int)
+    coulomb_only : whether to only calculate Coulomb energy (boolean)
+    verbose : whether to print results (boolean)
     
     Returns
     -------
-
+    mutant_proton_seq : proton sequence after minimisation for each alanine mutant (MxN array)
     """
-    # TODO: fill this function and refactor
+    mutable =  [i for i in range(len(resi)) if not resn[i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
+    mutant_proton_seq = np.zeros((len(mutable), len(resn)))
     ignore_mask = np.ones_like(deprot_charges, dtype=bool)
-    for r, res in enumerate(resn):
-        if res in ['NT', 'CT']:
-            continue
-        print('\n{} {} -> ALA...'.format(res, resi[r]))
-        ignore_mask[r] = False
+    
+    # Iterate over mutants and store 
+    for r, res in enumerate(mutable):
+        print('\n{} {} -> ALA...'.format(resn[res], resi[res]))
+        ignore_mask[res] = False
         mutant_min_energy = minimise_energy(deprot_charges[ignore_mask], 
                                             affinities[ignore_mask], 
                                             xyz[ignore_mask], 
                                             charge, 
                                             coulomb_only, 
                                             verbose)
-        ignore_mask[r] = True
+        mutant_proton_seq[r, ignore_mask] = mutant_min_energy[0]
+        mutant_proton_seq[r, res] = np.nan
+        ignore_mask[res] = True
     
+    return mutant_proton_seq
+    
+def save_charge_sequence(filename, charge_sequence, resn, resi):
+    """Save charge sequences to filename
+    """
+    with open(filename+'charge.txt', 'w') as outfile:
+        outfile.write('# Some data')
+    pass
+
 def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, resi, pdb_file=None):
     """Save minimised proton sequence to file in the form:
     
@@ -498,7 +520,6 @@ def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, r
 
 
 if __name__ == '__main__':
-    #print(__doc__)
     argparser = argparse.ArgumentParser(description=__doc__, 
                                         formatter_class=argparse.RawDescriptionHelpFormatter)
     argparser.add_argument('input', metavar='INPUT', help='input PDB file to determine charges for')
