@@ -4,7 +4,7 @@
 # MIT License
 """chargePlacer: Python implementation of a charge positioning algorithm
 
-This is a command line script to determine a reasonablly energy
+This is a command line script to determine a reasonably energy
 minimised proton sequence for an input PDB file (INPUT) for a given
 charge state (CHARGE). A search algorithm is used to sample proton
 permutations across chargeable side-chains and termini represented as
@@ -35,7 +35,6 @@ from __future__ import division, print_function, absolute_import
 # Standard Python Modules
 import argparse
 import os
-import sys
 import time
 
 # Additional Modules
@@ -103,14 +102,14 @@ class PDB():
     def __init__(self, filename=None):
         if not os.path.splitext(filename)[1] in ['.pdb', '.pdbqt']:
             raise ValueError('Incorrect file extension, must be .pdb or .pdbqt')
-        else:
-            self.filename = filename
 
-        self.AA_3to1    = {'ALA':'A', 'ARG':'R', 'ASN':'N', 'ASP':'D',
-                           'CYS':'C', 'GLU':'E', 'GLN':'Q', 'GLY':'G',
-                           'HIS':'H', 'ILE':'I', 'LEU':'L', 'LYS':'K',
-                           'MET':'M', 'PHE':'F', 'PRO':'P', 'SER':'S',
-                           'THR':'T', 'TRP':'W', 'TYR':'Y', 'VAL':'V'}
+        self.filename = filename
+
+        self.AA_3to1 = {'ALA':'A', 'ARG':'R', 'ASN':'N', 'ASP':'D',
+                        'CYS':'C', 'GLU':'E', 'GLN':'Q', 'GLY':'G',
+                        'HIS':'H', 'ILE':'I', 'LEU':'L', 'LYS':'K',
+                        'MET':'M', 'PHE':'F', 'PRO':'P', 'SER':'S',
+                        'THR':'T', 'TRP':'W', 'TYR':'Y', 'VAL':'V'}
         self.ATOM_STRING = "{}{:5d} {:4}{:.1}{:.3} {:.1}{:>4d}{:.1}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:.2}  \n"
 
         self.structure = [None]
@@ -161,7 +160,7 @@ class PDB():
                 elif record_type == 'MODEL ':
                     open_model = True
                     _model = int(entry.split()[1])
-                    if not _model == model+1:
+                    if _model != model+1:
                         print('MODEL records should be sequentially numbered beginning with 1.')
                         print('MODEL {} renumbered to {}'.format(_model, model+1))
                     model += 1
@@ -229,9 +228,9 @@ def distance_matrix(a, b):
     distances : array of Euclidean distances (NxM)
     """
     
-    _a = np.asarray(a)[:,np.newaxis,:]
-    _b = np.asarray(b)[np.newaxis,:,:]
-    return np.sum((_a - _b)**2, axis = -1)**0.5
+    _a = np.asarray(a)[:, np.newaxis, :]
+    _b = np.asarray(b)[np.newaxis, :, :]
+    return np.sum((_a - _b)**2, axis=-1)**0.5
 
 def symmetric_matrix(vector):
     """
@@ -397,7 +396,7 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
     shunt_min = current_min
     counters = [time.process_time(), 0, 0]
 
-    while (shunt_min <= current_min):
+    while shunt_min <= current_min:
         counters[1] += 1
         if verbose:
             print('Shunt={}'.format(counters[1]))
@@ -422,7 +421,7 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
         if verbose:
             print('Shunt {} minimum energy {:.2f} kJ/mol'.format(counters[1], shunt_min))
         # Update `proton_seq` to best values
-        if (shunt_min >= current_min):
+        if shunt_min >= current_min:
             e_coulomb = coulomb_energy(proton_seq+deprot_charges, distances, mask)
             e_proton = binding_energy(proton_seq, affinities)
             counters[0] = time.process_time() - counters[0]
@@ -461,7 +460,7 @@ def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_on
     -------
     mutant_proton_seq : proton sequence after minimisation for each alanine mutant (MxN array)
     """
-    mutable =  [i for i in range(len(resi)) if not resn[i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
+    mutable = [i for i in range(len(resi)) if not resn[i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
     mutant_proton_seq = np.zeros((len(mutable), len(resn)))
     ignore_mask = np.ones_like(deprot_charges, dtype=bool)
     mutant_energies = []
@@ -479,24 +478,22 @@ def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_on
         mutant_proton_seq[r, ignore_mask] = mutant_min_energy[0]
         mutant_proton_seq[r, res] = np.nan
         ignore_mask[res] = True
-        mutant_energies.append(mutant_min_energy[1:3])
+        mutant_energies.append(mutant_min_energy[2:4])
     
-    return mutant_proton_seq, mutant_energies, mutable
+    return mutable, mutant_proton_seq, mutant_energies
     
-def save_charge_sequence(filename, wt_charge_sequence, wt_energy, resn, resi, mutable=None,
-                         mutant_charge_sequence=None, mut_energies=None, pdb_file=None):
+def save_charge_sequence(filename, wt_charge_sequence, resn, resi, mutable=None,
+                         mutant_charge_sequence=None, pdb_file=None):
     """Save charge sequences to file.
     
     Parameters
     ----------
     filename : str
     wt_charge_sequence : ndarray
-    wt_energy : float
     resn : list
     resi : list
     mutable : list, optional
     mut_charge_sequence : ndarray, optional
-    mut_energies : list, optional
     pdb_file : str, optional
     
     Returns
@@ -509,13 +506,44 @@ def save_charge_sequence(filename, wt_charge_sequence, wt_energy, resn, resi, mu
         outfile.write('# This file was generated by chargePlacer.py, {}\n'.format(time.strftime("%d %b %Y %H:%M:%S")))
         if pdb_file:
             outfile.write('# From {}\n'.format(pdb_file))
-        outfile.write('\t'+'\t'.join(resn)+'\n') # Residue names
-        outfile.write('\t'+'\t'.join(str(resi))+'\n') # Residues numbers
-        data_str = ','.join(['{:3.0f}'.format(i) for i in wt_charge_sequence])
-        outfile.write('WT\t'+data_str+'\n')
+        outfile.write('--\t--\t'+'\t'.join(resn)+'\n') # Residue names
+        outfile.write('--\t--\t'+'\t'.join(map(str, resi))+'\n') # Residues numbers
+        
+        data_str = '{}\t{}\t'+'\t'.join(['{:.0f}']*len(resn))+'\n'
+        
+        outfile.write(data_str.format('WT','--',*wt_charge_sequence))
+        
         if mutable:
-            pass
-            #TODO: THIS!!!!!!!!!!!!!!!!!!!!!
+            for m, mut in enumerate(mutable):
+                outfile.write(data_str.format(resn[mut],resi[mut],*mutant_charge_sequence[m]))
+    print('Charge sequence(s) successfully saved to {}'.format(filename+'charges.txt'))
+
+def save_energies(filename, wt_energies, mut_energies, mutable, resn, resi, pdb_file=None):
+    """Save energies to file
+    
+    Parameters
+    ----------
+    filename : str
+    wt_energy : tuple
+    mut_energies : list of tuples
+    mutable : list of str
+    pdb_file : str
+    
+    Returns
+    -------
+    outfile : file
+        Text file containing energies for alanine scanning
+        <RESN>\t<RESI>\t<COULOMB>\t<BINDING>
+    """
+    with open(filename+'energies.txt', 'w') as outfile:
+        outfile.write('# This file was generated by chargePlacer.py, {}\n'.format(time.strftime("%d %b %Y %H:%M:%S")))
+        if pdb_file:
+            outfile.write('# From {}\n'.format(pdb_file))
+        data_str = '{}\t{}\t{:.2f}\t{:.2f}\n'
+        outfile.write(data_str.format('WT','--',*wt_energies))
+        for m, mut in enumerate(mutable):
+            outfile.write(data_str.format(resn[mut],resi[mut],*mut_energies[m]))
+    print('Energies successfully saved to {}'.format(filename+'energies.txt'))
 
 def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, resi, pdb_file=None):
     """Save minimised proton sequence to file.
@@ -551,7 +579,7 @@ def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, r
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__, 
                                         formatter_class=argparse.RawDescriptionHelpFormatter)
-    argparser.add_argument('input', metavar='INPUT', help='input PDB file to determine charges for')
+    argparser.add_argument('input', metavar='INPUT', help='input PDB file for which to determine charges')
     argparser.add_argument('charge', metavar='CHARGE', help='target charge state', type=int)
     argparser.add_argument('-v', '--verbose', 
                            help='verbose output', action='store_true')
@@ -562,7 +590,7 @@ if __name__ == '__main__':
                            help='relative permittivity to use (default: 1)', 
                            default=1, type=float)
     argparser.add_argument('-a', '--alanine_scan', 
-                           help='perform in silico alanine scanning for all chargeable residues', 
+                           help='perform in silico alanine scanning for all chargeable residues. Additional file energies.txt os generated', 
                            action='store_true')
     argparser.add_argument('-o', '--output', 
                            help='prefix for output files (default: ""). Gives *proton_sites.txt and *charges.txt', 
@@ -573,34 +601,16 @@ if __name__ == '__main__':
         E_CONST = _E_CONST / args.relative_permittivity
     
     print('Opening {} and parsing coordinates...'.format(args.input))
-    resn, resi , deprot_charges, xyz, affinities = parse_coordinates(args.input)
+    resn, resi, deprot_charges, xyz, affinities = parse_coordinates(args.input)
   
     print('Minimising energy of proton sequence...')
     min_energy = minimise_energy(deprot_charges, 
                                  affinities, 
                                  xyz, 
                                  args.charge,
-                                 coulomb_only = args.coulomb_only, 
-                                 verbose = args.verbose)
-    
-    if args.alanine_scan:
-        print('Beginning in silico alanine scanning...')
-        alanine_scan(resn,
-                     resi,
-                     deprot_charges, 
-                     affinities, 
-                     xyz, 
-                     args.charge,
-                     coulomb_only = args.coulomb_only, 
-                     verbose = args.verbose)
-    else:
-        save_charge_sequence(args.output,
-                             min_energy[0],
-                             min_energy[1:3],
-                             resn,
-                             resi,
-                             args.input)
-    
+                                 coulomb_only=args.coulomb_only, 
+                                 verbose=args.verbose)
+
     save_proton_sequence(args.output, 
                          min_energy[0], 
                          min_energy[2], 
@@ -608,3 +618,36 @@ if __name__ == '__main__':
                          resn, 
                          resi, 
                          args.input)
+
+    if args.alanine_scan:
+        print('Beginning in silico alanine scanning...')
+        scanned_alas = alanine_scan(resn,
+                                    resi,
+                                    deprot_charges, 
+                                    affinities, 
+                                    xyz, 
+                                    args.charge,
+                                    coulomb_only=args.coulomb_only, 
+                                    verbose=args.verbose)
+       
+        save_charge_sequence(args.output,
+                             min_energy[0]+deprot_charges,
+                             resn,
+                             resi,
+                             mutable=scanned_alas[0],
+                             mutant_charge_sequence=scanned_alas[1]+deprot_charges,
+                             pdb_file=args.input)
+        save_energies(args.output,
+                      min_energy[2:4],
+                      scanned_alas[2],
+                      scanned_alas[0],
+                      resn,
+                      resi,
+                      pdb_file=args.input)
+    else:
+        save_charge_sequence(args.output,
+                             min_energy[0]+deprot_charges,
+                             resn,
+                             resi,
+                             pdb_file=args.input)
+
