@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 # Copyright 2020 Jedd Bellamy-Carter
 # MIT License
 """chargePlacer: Python implementation of a charge positioning algorithm
@@ -11,11 +11,11 @@ permutations across chargeable side-chains and termini represented as
 point charges. This algorithm produces a reproducible output proton
 sequence in far fewer steps than required for sampling all permutations.
 
-The optimised proton sequence is saved to file (*proton_sites.txt) with 
+The optimised proton sequence is saved to file (*proton_sites.txt) with
 the format:
 <Residue Name> <Residue Number> <Chain Identifier>
 
-The charges matching to this proton sequences are saved to file 
+The charges matching to this proton sequences are saved to file
 (*charges.txt).
 
 A choice of energies are calculated and used for determination. By
@@ -26,7 +26,7 @@ Coulomb energy is taken into account.
 
 This software also provides the option to perform in silico alanine
 scanning, where each chargeable side-chain is removed and the minimised
-proton sequence determined for each 'mutant'. The charges for each 
+proton sequence determined for each 'mutant'. The charges for each
 mutant proton sequence are appended to `*charges.txt`.
 """
 
@@ -40,54 +40,55 @@ import time
 # Additional Modules
 import numpy as np
 
-#%% GLOBAL VARIABLES
+# %% GLOBAL VARIABLES
 
 _E_CONST = 2.307E-18  # J.Å -- (elementary charge)^2 / (4 x PI x vacuum permittivity)
-relative_permittivity = 1 # Relative permittivity of vacuum
+relative_permittivity = 1  # Relative permittivity of vacuum
 AVOGADRO = 6.022E+23
-E_CONST = _E_CONST * 0.001 * AVOGADRO / relative_permittivity # kJ.Å/mol
+E_CONST = _E_CONST * 0.001 * AVOGADRO / relative_permittivity  # kJ.Å/mol
 
-#%% LOOKUP DICTIONARIES 
+# %% LOOKUP DICTIONARIES 
 
 # Atoms to get coordinates for point-charge assignment
 point_charge_dict = {
     'ASP': 'OD2',
     'GLU': 'OE2',
-    'LYS': 'NZ', 
-    'ARG': 'NH2', 
-    'HIS': 'CB', 
-    'NT': 'N', 
+    'LYS': 'NZ',
+    'ARG': 'NH2',
+    'HIS': 'CB',
+    'NT': 'N',
     'CT': 'C'
 }
 # Charge of the deprotonated residue
 deprot_charge_dict = {
-    'ASP': -1, 
-    'GLU': -1, 
-    'LYS': 0, 
-    'ARG': 0, 
-    'HIS': 0, 
-    'NT': 0, 
+    'ASP': -1,
+    'GLU': -1,
+    'LYS': 0,
+    'ARG': 0,
+    'HIS': 0,
+    'NT': 0,
     'CT': -1
 }
 # Proton affinities in kJ/mol
 proton_affinity_dict = {
-    'ASP': 1453.5, 
-    'GLU': 1448.5, 
-    'LYS': 918., 
+    'ASP': 1453.5,
+    'GLU': 1448.5,
+    'LYS': 918.,
     'ARG': 1002.,
-    'HIS': 958., 
-    'NT': 886.6, 
+    'HIS': 958.,
+    'NT': 886.6,
     'CT': 1430.
 }
 
-#%% CLASSES
+# %% CLASSES
+
 
 class PDB():
-    """
-    Class for parsing PDB files that follow the accepted format
+    """Class for parsing PDB files that follow the accepted format.
+
     https://www.wwpdb.org/documentation/file-format-content/format33/sect9.html#ATOM
 
-    Extracts ATOM and HETATM records. 
+    Extracts ATOM and HETATM records.
     HETATM with HOH resname are removed.
 
     Dictionary format:
@@ -119,8 +120,7 @@ class PDB():
         self._parse()
 
     def _parse(self):
-        """Parse the PDB file as a series of record entries into a dictionary"""
-        
+        """Parse the PDB file as a series of entries into a dictionary."""
         with open(self.filename, 'r') as entries:
             model = 0
             open_model = False
@@ -138,7 +138,7 @@ class PDB():
                         chain = entry[21]
                         if chain == ' ':
                             chain = 'A'
-                        if not chain in self.structure[model]:
+                        if chain not in self.structure[model]:
                             self.structure[model][chain] = dict()
                     if not int(entry[22:26]) == resnum:
                         resnum = int(entry[22:26])
@@ -156,7 +156,7 @@ class PDB():
                                                                  'bfactor': -1.00,
                                                                  'element': entry[76:78].strip()
                                                                  })
-                
+
                 elif record_type == 'MODEL ':
                     open_model = True
                     _model = int(entry.split()[1])
@@ -165,12 +165,12 @@ class PDB():
                         print('MODEL {} renumbered to {}'.format(_model, model+1))
                     model += 1
                     self.structure.append(dict())
-    
+
                 elif record_type == 'ENDMDL':
                     open_model = False
                     chain = None
                     resnum = None
-                
+
                 elif record_type[:3] == 'TER':
                     chain = None
                     resnum = None
@@ -519,7 +519,7 @@ def save_charge_sequence(filename, wt_charge_sequence, resn, resi, mutable=None,
     print('Charge sequence(s) successfully saved to {}'.format(filename+'charges.txt'))
 
 def save_energies(filename, wt_energies, mut_energies, mutable, resn, resi, pdb_file=None):
-    """Save energies to file
+    """Save energies to file.
     
     Parameters
     ----------
