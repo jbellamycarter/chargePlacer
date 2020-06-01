@@ -23,6 +23,12 @@ In the simplest case, a PDB file **`input`** is provided along with a target cha
 python chargePlacer.py input charge
 ```
 
+If you move `chargePlacer` to a directory in your system `$PATH` then you may omit the `python` command:
+
+```shell
+chargePlacer.py input charge
+```
+
 To minimise for Coulomb energy only, append `-c`:
 
 ```shell
