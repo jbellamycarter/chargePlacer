@@ -1,4 +1,4 @@
-# chargePlacer: Python scripts for charge distribution in gas-phase molecular dynamics
+# chargePlacer: Python scripts for charge distribution in Gas-Phase molecular dynamics
 
 This is a command line script to determine a reasonably energy minimised proton sequence for an input PDB file (**input**) for a given charge state (**charge**). See [Basic Usage](#basic-usage).
 A search algorithm is used to sample proton permutations across chargeable side-chains and termini represented as point charges. The algorithm is inspired by the method described by refs [1–3](#references), it produces a reproducible output proton sequence in far fewer steps than required for sampling all permutations.
