@@ -1,4 +1,6 @@
 # Input/Output files from chargePlacer
 *.pdb*
 *.txt
+*.ipynb
+!requirements.txt
 
