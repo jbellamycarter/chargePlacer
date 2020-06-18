@@ -2,5 +2,6 @@
 *.pdb*
 *.txt
 *.ipynb
+example/
 !requirements.txt
 

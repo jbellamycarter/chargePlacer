@@ -222,12 +222,15 @@ def distance_matrix(a, b):
 
     Parameters
     ----------
-    a : list or array of xyz coordinates (Nx3)
-    b : list or array of xyz coordinates (Mx3)
+    a : list or ndarray
+        xyz coordinates (Nx3)
+    b : list or ndarray
+        xyz coordinates (Mx3)
 
     Returns
     -------
-    distances : array of Euclidean distances (NxM)
+    distances : ndarray
+        Euclidean distances (NxM)
     """
 
     _a = np.asarray(a)[:, np.newaxis, :]
@@ -241,11 +244,12 @@ def symmetric_matrix(vector):
 
     Parameters
     ----------
-    vector : array (N)
+    vector : ndarray (N)
 
     Returns
     -------
-    matrix : symmetric matrix (NxN)
+    matrix : ndarray
+        symmetric matrix (NxN)
     """
 
     return vector*vector[:, np.newaxis]
@@ -258,12 +262,15 @@ def moveable_protons(deprotonated_charges, target_charge):
 
     Parameters
     ----------
-    deprotonated_charges : np.ndarray of deprotonated charges (N)
-    target_charge : the final charge of the protein
+    deprotonated_charges : ndarray
+        deprotonated charges (N)
+    target_charge : int
+        the final charge of the protein
 
     Returns
     -------
-    proton_vector : a randomised guess for the `proton_sequence` vector (N)
+    proton_vector : ndarray
+        a randomised guess for the `proton_sequence` vector (N)
     """
     num_protons = target_charge - deprotonated_charges.sum()
     proton_vector = np.zeros_like(deprotonated_charges)
@@ -279,11 +286,18 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
 
     Parameters
     ----------
+    pdb_file : file
+    point_charges : dict
+    deprot_charges : dict
+    proton_affinities : dict
 
     Returns
     -------
-    resn : list
-    resi : list
+    tuple
+        Residue information used for saving results
+            resn : list
+            resi : list
+            chains : list
     deprot_charges : ndarray
     xyz : ndarray
     affinities : ndarray
@@ -293,6 +307,7 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
     # Initialise lists
     resn = []
     resi = []
+    chains = []
     deprot_charges = []
     affinities = []
     xyz = []
@@ -300,34 +315,37 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
     # Preselect model and chain in case of multiple of either
     # TODO: Add multi-chain and multi-model behaviour
     model = 1
-    chain = 'A'
 
-    residues = sorted(structure.structure[model][chain])
+    for chain in structure.chains:
+        residues = sorted(structure.structure[model][chain])
 
-    # Add N-terminus to lists
-    resn.append('NT')
-    resi.append(residues[0])
-    deprot_charges.append(deprot_charge_dict['NT'])
-    affinities.append(proton_affinity_dict['NT'])
-    xyz.append(structure.get_coords(model, chain, residues[0], point_charge_dict['NT']))
+        # Add N-terminus to lists
+        resn.append('NT')
+        resi.append(residues[0])
+        chains.append(chain)
+        deprot_charges.append(deprot_charge_dict['NT'])
+        affinities.append(proton_affinity_dict['NT'])
+        xyz.append(structure.get_coords(model, chain, residues[0], point_charge_dict['NT']))
 
-    for residue in residues:
-        resname = structure.structure[model][chain][residue][0]['resname']
-        if resname in ['ASP', 'GLU', 'LYS', 'ARG', 'HIS']:
-            resn.append(resname)
-            resi.append(residue)
-            deprot_charges.append(deprot_charge_dict[resname])
-            affinities.append(proton_affinity_dict[resname])
-            xyz.append(structure.get_coords(model, chain, residue, point_charge_dict[resname]))
+        for residue in residues:
+            resname = structure.structure[model][chain][residue][0]['resname']
+            if resname in ['ASP', 'GLU', 'LYS', 'ARG', 'HIS']:
+                resn.append(resname)
+                resi.append(residue)
+                chains.append(chain)
+                deprot_charges.append(deprot_charge_dict[resname])
+                affinities.append(proton_affinity_dict[resname])
+                xyz.append(structure.get_coords(model, chain, residue, point_charge_dict[resname]))
 
-    # Add C-terminus to lists
-    resn.append('CT')
-    resi.append(residues[-1])
-    deprot_charges.append(deprot_charge_dict['CT'])
-    affinities.append(proton_affinity_dict['CT'])
-    xyz.append(structure.get_coords(model, chain, residues[-1], point_charge_dict['CT']))
+        # Add C-terminus to lists
+        resn.append('CT')
+        resi.append(residues[-1])
+        chains.append(chain)
+        deprot_charges.append(deprot_charge_dict['CT'])
+        affinities.append(proton_affinity_dict['CT'])
+        xyz.append(structure.get_coords(model, chain, residues[-1], point_charge_dict['CT']))
 
-    return resn, resi, np.array(deprot_charges), np.array(xyz), np.array(affinities)
+    return (resn, resi, chains), np.array(deprot_charges), np.array(xyz), np.array(affinities)
 
 
 def coulomb_energy(charge_seq, distances, mask):
@@ -372,20 +390,29 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
 
     Parameters
     ----------
-    deprot_charges : charge of residue when deprotonated (1xN array)
-    affinities : proton affinities of each residue (1xN array)
-    xyz : coordinates for point charges (Nx3)
-    charge : target charge state (int)
-    coulomb_only : whether to only calculate Coulomb energy (boolean)
-    verbose : whether to print results (boolean)
+    deprot_charges : ndarray
+        charge of residue when deprotonated (1xN array)
+    affinities : ndarray
+        proton affinities of each residue (1xN array)
+    xyz : ndarray
+        coordinates for point charges (Nx3)
+    charge : int
+        target charge state
+    coulomb_only : bool
+        whether to only calculate Coulomb energy
+    verbose : bool
+        whether to print results
 
     Returns
     -------
-    proton_seq : current best proton sequence after minimisation
-    e_total : total energy of `proton_seq` after minimisation
-                (Only if `coulomb_only`=False)
-    e_coulomb : Coulomb energy of `proton_seq` after minimisation
-    e_proton : binding energy of `proton_seq` after minimisation
+    proton_seq : ndarray
+        current best proton sequence after minimisation
+    e_total : float
+        total energy of `proton_seq` after minimisation (Only if `coulomb_only`=False)
+    e_coulomb : float
+            Coulomb energy of `proton_seq` after minimisation
+    e_proton : float
+            binding energy of `proton_seq` after minimisation
     """
     # Initialise local variables
     proton_seq = moveable_protons(deprot_charges, charge)
@@ -447,7 +474,7 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
     return proton_seq, current_min, e_coulomb, e_proton
 
 
-def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
+def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
     """In silico alanine scanning of chargeable side-chains.
 
     Takes usual inputs for `minimise_energy` to pass on a masked version. Only
@@ -455,27 +482,41 @@ def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_on
 
     Parameters
     ----------
-    resn : residue names (list)
-    resi : residue numbers/identities (list)
-    deprot_charges : charge of residue when deprotonated (1xN array)
-    affinities : proton affinities of each residue (1xN array)
-    xyz : coordinates for point charges (Nx3)
-    charge : target charge state (int)
-    coulomb_only : whether to only calculate Coulomb energy (boolean)
-    verbose : whether to print results (boolean)
+    residues : tuple
+        Residue information used for saving results
+            resn : list
+            resi : list
+            chains : list
+    deprot_charges : ndarray
+        charge of residue when deprotonated (1xN)
+    affinities : ndarray
+        proton affinities of each residue (1xN)
+    xyz : ndarray
+        coordinates for point charges (Nx3)
+    charge : int
+        target charge state
+    coulomb_only : bool
+        whether to only calculate Coulomb energy
+    verbose : bool
+        whether to print results
 
     Returns
     -------
-    mutant_proton_seq : proton sequence after minimisation for each alanine mutant (MxN array)
+    mutable : list
+        mutable residues
+    mutant_proton_seq : ndarray
+        proton sequence after minimisation for each alanine mutant (MxN)
+    mutant_energies : list of tuples
+        energies for each mutant proton sequence
     """
-    mutable = [i for i in range(len(resi)) if not resn[i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
-    mutant_proton_seq = np.zeros((len(mutable), len(resn)))
+    mutable = [i for i in range(len(residues[1])) if not residues[0][i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
+    mutant_proton_seq = np.zeros((len(mutable), len(residues[0])))
     ignore_mask = np.ones_like(deprot_charges, dtype=bool)
     mutant_energies = []
 
     # Iterate over mutants and store
     for r, res in enumerate(mutable):
-        print('\n{} {} -> ALA...'.format(resn[res], resi[res]))
+        print('\n{} {} {} -> ALA...'.format(residues[0][res], residues[1][res], residues[2][res]))
         ignore_mask[res] = False
         mutant_min_energy = minimise_energy(deprot_charges[ignore_mask],
                                             affinities[ignore_mask],
@@ -491,7 +532,7 @@ def alanine_scan(resn, resi, deprot_charges, affinities, xyz, charge, coulomb_on
     return mutable, mutant_proton_seq, mutant_energies
 
 
-def save_charge_sequence(filename, wt_charge_sequence, resn, resi, mutable=None,
+def save_charge_sequence(filename, wt_charge_sequence, residues, mutable=None,
                          mutant_charge_sequence=None, pdb_file=None):
     """Save charge sequences to file.
 
@@ -499,8 +540,11 @@ def save_charge_sequence(filename, wt_charge_sequence, resn, resi, mutable=None,
     ----------
     filename : str
     wt_charge_sequence : ndarray
-    resn : list
-    resi : list
+    residues : tuple
+        Residue information used for saving results
+            resn : list
+            resi : list
+            chains : list
     mutable : list, optional
     mut_charge_sequence : ndarray, optional
     pdb_file : str, optional
@@ -515,20 +559,21 @@ def save_charge_sequence(filename, wt_charge_sequence, resn, resi, mutable=None,
         outfile.write('# This file was generated by chargePlacer.py, {}\n'.format(time.strftime("%d %b %Y %H:%M:%S")))
         if pdb_file:
             outfile.write('# From {}\n'.format(pdb_file))
-        outfile.write('--\t--\t' + '\t'.join(resn) + '\n') # Residue names
-        outfile.write('--\t--\t' + '\t'.join(map(str, resi)) + '\n') # Residues numbers
+        outfile.write('--\t--\t--\t' + '\t'.join(residues[0]) + '\n') # Residue names
+        outfile.write('--\t--\t--\t' + '\t'.join(map(str, residues[1])) + '\n') # Residues numbers
+        outfile.write('--\t--\t--\t' + '\t'.join(residues[2]) + '\n') # Chains
 
-        data_str = '{}\t{}\t' + '\t'.join(['{:.0f}'] * len(resn)) + '\n'
+        data_str = '{}\t{}\t{}\t' + '\t'.join(['{:.0f}'] * len(residues[0])) + '\n'
 
-        outfile.write(data_str.format('WT', '--', *wt_charge_sequence))
+        outfile.write(data_str.format('WT', '--', '--', *wt_charge_sequence))
 
         if mutable:
             for m, mut in enumerate(mutable):
-                outfile.write(data_str.format(resn[mut], resi[mut], *mutant_charge_sequence[m]))
+                outfile.write(data_str.format(residues[0][mut], residues[1][mut], residues[2][mut], *mutant_charge_sequence[m]))
     print('Charge sequence(s) successfully saved to {}'.format(filename + 'charges.txt'))
 
 
-def save_energies(filename, wt_energies, mut_energies, mutable, resn, resi, pdb_file=None):
+def save_energies(filename, wt_energies, mut_energies, mutable, residues, pdb_file=None):
     """Save energies to file.
 
     Parameters
@@ -537,25 +582,30 @@ def save_energies(filename, wt_energies, mut_energies, mutable, resn, resi, pdb_
     wt_energy : tuple
     mut_energies : list of tuples
     mutable : list of str
+    residues : tuple
+        Residue information used for saving results
+            resn : list
+            resi : list
+            chains : list
     pdb_file : str
 
     Returns
     -------
     outfile : file
         Text file containing energies for alanine scanning
-        <RESN>\t<RESI>\t<COULOMB>\t<BINDING>
+        <RESN>\t<RESI>\t<CHAIN>\t<COULOMB>\t<BINDING>
     """
     with open(filename + 'energies.txt', 'w') as outfile:
         outfile.write('# This file was generated by chargePlacer.py, {}\n'.format(time.strftime("%d %b %Y %H:%M:%S")))
         if pdb_file:
             outfile.write('# From {}\n'.format(pdb_file))
-        data_str = '{}\t{}\t{:.2f}\t{:.2f}\n'
-        outfile.write(data_str.format('WT', '--', *wt_energies))
+        data_str = '{}\t{}\t{}\t{:.2f}\t{:.2f}\n'
+        outfile.write(data_str.format('WT', '--', '--', *wt_energies))
         for m, mut in enumerate(mutable):
-            outfile.write(data_str.format(resn[mut], resi[mut], *mut_energies[m]))
+            outfile.write(data_str.format(residues[0][mut], residues[1][mut], residues[2][mut], *mut_energies[m]))
     print('Energies successfully saved to {}'.format(filename + 'energies.txt'))
 
-def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, resi, pdb_file=None):
+def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, residues, pdb_file=None):
     """Save minimised proton sequence to file.
 
     Parameters
@@ -563,8 +613,13 @@ def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, r
     filename : str
     proton_sequence : ndarray
         Proton sequence that gives a (reasonably) minimised energy.
-    resn : list
-    resi : list
+    e_coulomb : float
+    e_proton : float
+    residues : tuple
+        Residue information used for saving results
+            resn : list
+            resi : list
+            chains : list
     pdb_file : str
         Name of input PDB file from which proton_sequence was generated
 
@@ -579,9 +634,9 @@ def save_proton_sequence(filename, proton_sequence, e_coulomb, e_proton, resn, r
         if pdb_file:
             outfile.write('# From {}\n'.format(pdb_file))
         outfile.write('# Coulomb Energy = {:.2f} kJ/mol, Proton Binding Energy = {:.2f} kJ/mol\n'.format(e_coulomb, e_proton))
-        for r, res in enumerate(resi):
+        for r, res in enumerate(residues[1]):
             if proton_sequence[r]:
-                outfile.write('{}\t{}\t{}\n'.format(resn[r], res, 'A'))
+                outfile.write('{}\t{}\t{}\n'.format(residues[0][r], res, residues[2][r]))
     print('Proton sequence successfully saved to {}'.format(filename + 'proton_sites.txt'))
 
 
@@ -610,7 +665,7 @@ if __name__ == '__main__':
         E_CONST = _E_CONST / args.relative_permittivity
 
     print('Opening {} and parsing coordinates...'.format(args.input))
-    resn, resi, deprot_charges, xyz, affinities = parse_coordinates(args.input)
+    residues, deprot_charges, xyz, affinities = parse_coordinates(args.input)
 
     print('Minimising energy of proton sequence...')
     min_energy = minimise_energy(deprot_charges,
@@ -624,14 +679,12 @@ if __name__ == '__main__':
                          min_energy[0],
                          min_energy[2],
                          min_energy[3],
-                         resn,
-                         resi,
+                         residues,
                          args.input)
 
     if args.alanine_scan:
         print('Beginning in silico alanine scanning...')
-        scanned_alas = alanine_scan(resn,
-                                    resi,
+        scanned_alas = alanine_scan(residues,
                                     deprot_charges,
                                     affinities,
                                     xyz,
@@ -641,8 +694,7 @@ if __name__ == '__main__':
 
         save_charge_sequence(args.output,
                              min_energy[0] + deprot_charges,
-                             resn,
-                             resi,
+                             residues,
                              mutable=scanned_alas[0],
                              mutant_charge_sequence=scanned_alas[1] + deprot_charges,
                              pdb_file=args.input)
@@ -650,13 +702,11 @@ if __name__ == '__main__':
                       min_energy[2:4],
                       scanned_alas[2],
                       scanned_alas[0],
-                      resn,
-                      resi,
+                      residues,
                       pdb_file=args.input)
     else:
         save_charge_sequence(args.output,
                              min_energy[0] + deprot_charges,
-                             resn,
-                             resi,
+                             residues,
                              pdb_file=args.input)
 
