@@ -281,7 +281,8 @@ def moveable_protons(deprotonated_charges, target_charge):
 
 def parse_coordinates(pdb_file, point_charges=point_charge_dict,
                       deprot_charges=deprot_charge_dict,
-                      proton_affinities=proton_affinity_dict):
+                      proton_affinities=proton_affinity_dict,
+                      model=1):
     """Parses coordinates for chargeable residues from `pdb_file`.
 
     Parameters
@@ -290,6 +291,8 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
     point_charges : dict
     deprot_charges : dict
     proton_affinities : dict
+    model : int (default = 1)
+        the number of the model to read from the PDB file
 
     Returns
     -------
@@ -311,10 +314,6 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
     deprot_charges = []
     affinities = []
     xyz = []
-
-    # Preselect model and chain in case of multiple of either
-    # TODO: Add multi-chain and multi-model behaviour
-    model = 1
 
     for chain in structure.chains:
         residues = sorted(structure.structure[model][chain])
@@ -474,7 +473,7 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
     return proton_seq, current_min, e_coulomb, e_proton
 
 
-def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
+def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True, protected=[]):
     """In silico alanine scanning of chargeable side-chains.
 
     Takes usual inputs for `minimise_energy` to pass on a masked version. Only
@@ -499,6 +498,8 @@ def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only
         whether to only calculate Coulomb energy
     verbose : bool
         whether to print results
+    protected : list of str
+        chains to be protected from alanine scanning
 
     Returns
     -------
@@ -509,7 +510,9 @@ def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only
     mutant_energies : list of tuples
         energies for each mutant proton sequence
     """
-    mutable = [i for i in range(len(residues[1])) if not residues[0][i] in ['NT', 'CT']] # 'NT' and 'CT' are immutable
+    if protected:
+        print('Chains: '+', '.join(protected)+' are protected from alanine scanning!')
+    mutable = [i for i in range(len(residues[1])) if (not residues[0][i] in ['NT', 'CT']) and (not residues[2][i] in protected)] # 'NT' and 'CT' are immutable
     mutant_proton_seq = np.zeros((len(mutable), len(residues[0])))
     ignore_mask = np.ones_like(deprot_charges, dtype=bool)
     mutant_energies = []
@@ -656,6 +659,8 @@ if __name__ == '__main__':
     argparser.add_argument('-a', '--alanine_scan',
                            help='perform in silico alanine scanning for all chargeable residues. Additional file energies.txt os generated',
                            action='store_true')
+    argparser.add_argument('-p', '--protect', metavar='',
+                           help='protect listed chains from alanine scanning. e.g. -p ABC', type=str)
     argparser.add_argument('-o', '--output',
                            help='prefix for output files (default: ""). Gives *proton_sites.txt and *charges.txt',
                            default='')
@@ -684,13 +689,19 @@ if __name__ == '__main__':
 
     if args.alanine_scan:
         print('Beginning in silico alanine scanning...')
+
+        if args.protect:
+            protect = list(args.protect)
+        else:
+            protect = []
         scanned_alas = alanine_scan(residues,
                                     deprot_charges,
                                     affinities,
                                     xyz,
                                     args.charge,
                                     coulomb_only=args.coulomb_only,
-                                    verbose=args.verbose)
+                                    verbose=args.verbose,
+                                    protected=protect)
 
         save_charge_sequence(args.output,
                              min_energy[0] + deprot_charges,
