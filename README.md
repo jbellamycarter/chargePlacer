@@ -71,6 +71,7 @@ See [Command Line Options](#command-line-options) below for further details.
 | `-c`, `--coulomb_only`    | minimise for Coulomb repulsion only, ignores proton affinity |
 | `-r` , `--relative_permittivity` | relative permittivity to use (default: 1) |
 | `-a`, `--alanine_scan`    | perform in silico alanine scanning for all chargeable residues |
+| `-p`, `--protect`         | protect listed chains from alanine scanning, e.g. `-p ABC` |
 | `-o`, `--output` OUTPUT | prefix for output files (default: ""). Gives `*proton_sites.txt` and `*charges.txt` |
 
 
