@@ -302,8 +302,8 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
             resi : list
             chains : list
     deprot_charges : ndarray
-    xyz : ndarray
     affinities : ndarray
+    xyz : ndarray
     """
     structure = PDB(pdb_file)
 
@@ -344,7 +344,7 @@ def parse_coordinates(pdb_file, point_charges=point_charge_dict,
         affinities.append(proton_affinity_dict['CT'])
         xyz.append(structure.get_coords(model, chain, residues[-1], point_charge_dict['CT']))
 
-    return (resn, resi, chains), np.array(deprot_charges), np.array(xyz), np.array(affinities)
+    return (resn, resi, chains), np.array(deprot_charges), np.array(affinities), np.array(xyz)
 
 
 def coulomb_energy(charge_seq, distances, mask):
@@ -383,7 +383,7 @@ def binding_energy(proton_seq, affinities):
     return affinities[proton_seq.nonzero()[0]].sum()
 
 
-def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True):
+def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=False):
     """Minimising function. Iterates through a proton sequence to find the
        combination that provides the miminal energy.
 
@@ -473,7 +473,7 @@ def minimise_energy(deprot_charges, affinities, xyz, charge, coulomb_only=False,
     return proton_seq, current_min, e_coulomb, e_proton
 
 
-def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=True, protected=[]):
+def alanine_scan(residues, deprot_charges, affinities, xyz, charge, coulomb_only=False, verbose=False, protected=[]):
     """In silico alanine scanning of chargeable side-chains.
 
     Takes usual inputs for `minimise_energy` to pass on a masked version. Only
@@ -670,7 +670,7 @@ if __name__ == '__main__':
         E_CONST = _E_CONST / args.relative_permittivity
 
     print('Opening {} and parsing coordinates...'.format(args.input))
-    residues, deprot_charges, xyz, affinities = parse_coordinates(args.input)
+    residues, deprot_charges, affinities, xyz = parse_coordinates(args.input)
 
     print('Minimising energy of proton sequence...')
     min_energy = minimise_energy(deprot_charges,
