@@ -5,7 +5,8 @@ A set of scripts for performing consistent gas-phase MD simulations of protein s
 ## Usage
 
 Perform **`chargePlacer`** calculations on an initial PDB file (`protein_init.pdb`) and generate the corresponding `proton_sites.txt` file for a given charge state. Copy the contents of this folder into the same directory as `protein_init.pdb` and `proton_sites.txt`. Then run:
-```bash ./gmx_command_list.sh
+```
+bash ./gmx_command_list.sh
 ```
 
 This will iterate through the following steps automatically:
