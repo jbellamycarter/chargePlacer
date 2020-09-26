@@ -1,0 +1,136 @@
+#!/usr/bin/env expect
+
+# Automates charge assignment of a protein structure with PDB2GMX.
+# Jedd Bellamy-Carter, Apr 2020
+# Based on expect script written by Andy Lau, Dec 2017, see https://github.com/andymlau/gasMD/blob/master/expect_autoAssign.exp
+# 
+# Places charges on lysines, arginines, aspartates, glumates, histidines and both termini
+# Proton placements are provided in the form of a text file: 'proton_sites.txt'
+# For use after chargePlacer (https://github.com/jbellamycarter/chargePlacer).
+#
+# USAGE
+# -----
+# Run in folder containing script 'pdb2gmx_automate.sh' and 'proton_sites.txt':
+#   expect autocharger.exp 
+#
+# NOTES
+# -----
+# Does not currently process chain identifier, therefore multi-chain proteins
+# must be renumbered sequentially such that there is a unqiue residue number
+# for each residue in the input PDB file. 
+
+set timeout -1
+
+set lys_q {Which LYSINE type do you want for residue (\d+)}
+set arg_q {Which ARGININE type do you want for residue (\d+)}
+set asp_q {Which ASPARTIC ACID type do you want for residue (\d+)}
+set glu_q {Which GLUTAMIC ACID type do you want for residue (\d+)}
+set his_q {Which HISTIDINE type do you want for residue (\d+)}
+set start_ter_q {start terminus type}
+set end_ter_q {end terminus type}
+
+set lysines {}
+set histidines {}
+set glutamates {}
+set aspartates {}
+set arginines {}
+set nterm false
+set cterm false
+set f "proton_sites.txt"
+# Retrieve protonation states from external file 'proton_sites.txt' as outputted by chargePlacer
+set fp [open $f "r"]
+
+#send "Reading protonation sites from " $f
+
+while {[gets $fp line] != -1} {
+    set resn  [lindex [regexp -all -inline {\S+} $line] 0 ]
+    set resi  [lindex [regexp -all -inline {\S+} $line] 1 ]
+    switch $resn {
+        "LYS"   {lappend lysines $resi}
+        "ARG"   {lappend arginines $resi}
+        "HIS"   {lappend histidines $resi}
+        "ASP"   {lappend aspartates $resi}
+        "GLU"   {lappend glutamates $resi}
+        "NT"    {set nterm true}
+        "CT"    {set cterm true}
+    }
+}
+close $fp
+
+spawn bash pdb2gmx_automate.sh
+
+expect  {
+
+    #Lysine charge and default settings; 0 = non-protonated (0), 1 = protonated (+1)
+    -re $lys_q {
+        if {$expect_out(1,string) in $lysines} {
+            send "1\r"
+        } else {
+            send "0\r"
+        }
+        exp_continue
+    }
+
+    #Arginine charge and default settings; 0 = non-protonated (0), 1 = protonated (+1)
+    -re $arg_q {
+        if {$expect_out(1,string) in $arginines} {
+            send "1\r"
+        } else {
+            send "0\r"
+        }
+        exp_continue
+    }
+
+    #Aspartate charge and default settings, 0 = non-protonated (0), 1 = protonated (+1)
+    -re $asp_q {
+        if {$expect_out(1,string) in $aspartates} {
+            send "1\r"
+        } else {
+            send "0\r"
+        }
+        exp_continue
+    }
+
+    #Glutamate charge and default settings, 0 = non-protonated (0), 1 = protonated (+1))
+    -re $glu_q {
+        if {$expect_out(1,string) in $glutamates} {
+            send "1\r"
+        } else {
+            send "0\r"
+        }
+        exp_continue
+    }
+
+    #Histidine charge and default settings; 0 = H on ND1 only (HISD), 1 = H on NE2 only (HISE),
+    #2 = H on ND1 and NE2 (HISH), 3 = Coupled to Heme (HIS1)
+    -re $his_q {
+        if {$expect_out(1,string) in $histidines} {
+            send "2\r"
+        } else {
+            send "1\r"
+        }
+        exp_continue
+    }
+
+    #Start Ter charge and default settings; N-terminus: 0 = NH3+, 1 = Zwitterion_NH3+, 2 = NH2, 3 = none
+    -re $start_ter_q {
+        if $nterm {
+            send "0\r"
+        } else {
+            send "2\r"
+        }
+        exp_continue
+    }
+
+    #End Ter charge and default settings; C-terminus: 0 = COO-, 1 = Zwitterion-COO-, 2 = COOH, 3 = none
+    -re $end_ter_q {
+        if $cterm {
+            send "2\r"
+        } else {
+            send "0\r"
+        }
+        exp_continue
+    }
+}
+
+puts "Protons have been assigned!"

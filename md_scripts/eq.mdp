@@ -1,0 +1,42 @@
+title		= Equilibration
+
+; Run Parameters
+integrator	= md		
+nsteps		= 25000		; 50 ps
+dt          = 0.002     ; 2 fs
+nstxout     = 0         ; No output, except for last frame (coordinates)
+nstvout     = 0         ; No output, except for last frame (velocities)
+nstfout     = 0         ; No output, except for last frame (forces)
+nstxtcout   = 1000      ; Write compressed trajectory every 2 ps (coordinates)
+nstenergy	= 1000		; Write energies to disk every 2 ps
+energygrps	= Protein
+
+; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
+cutoff-scheme   = verlet
+nstlist         = 100             ; Frequency to update the neighbor list
+ns_type		= grid  	; Method to determine neighbor list (simple, grid)
+periodic-molecules  = no
+vdwtype     = cut-off
+coulombtype	= cut-off ; Treatment of long range electrostatic interactions
+epsilon_r      = 1
+rcoulomb	= 300		; long range electrostatic cut-off
+rvdw		= 300		; long range Van der Waals cut-off
+pbc		= xyz		
+
+continuation            = no
+constraint_algorithm    = lincs
+constraints	            = h-bonds 
+lincs_iter              = 1
+lincs_order             = 4
+
+; Temperature Coupling
+tcoupl      = v-rescale
+tc-grps     = Protein
+tau_t       = 0.1
+ref_t       = 298
+pcoupl      = no
+
+gen_vel     = yes
+gen_temp    = 298
+gen_seed    = -1    ; Pseudorandom number
+
