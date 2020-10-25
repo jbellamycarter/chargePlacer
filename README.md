@@ -3,6 +3,14 @@
 This is a command line script to determine a reasonably energy minimised proton sequence for an input PDB file (**input**) for a given charge state (**charge**). See [Basic Usage](#basic-usage).
 A search algorithm is used to sample proton permutations across chargeable side-chains and termini represented as point charges. The algorithm is inspired by the method described by refs [1–3](#references), it produces a reproducible output proton sequence in far fewer steps than required for sampling all permutations.
 
+### Citation
+
+If you use chargePlacer in your research please cite the following article:
+
+> Bellamy-Carter J, O'Grady L, Passmore M, Jenner M and Oldham NJ. Decoding Protein Gas‐Phase Stability with Alanine Scanning and Collision Induced Unfolding Ion Mobility Mass Spectrometry. *Anal. Sens.* (2020). Accepted Author Manuscript. [doi:10.1002/anse.202000019](https://doi.org/10.1002/anse.202000019)
+
+## Other Info
+
 A choice of energies are calculated and used for determination:
 * By default, `E_tot` is used. This is the Coulomb energy minus the proton binding energy (i.e. the summed proton affinities of protonated residues). The values used herein are derived from simplified versions of each amino acid, per ref [4](#references). These are PA<sub>NT</sub>=886.6, PA<sub>ASP-</sub>=1453.5, PA<sub>GLU-</sub>=1448.5, PA<sub>HIS</sub>=958, PA<sub>LYS</sub>=918, PA<sub>ARG</sub>=1002, PA<sub>CT-</sub>=1430 kJ/mol.
 * `Coulomb-only` is the alternative mode (activated by `-c`), where only the Coulomb energy is taken into account.
